@@ -189,6 +189,8 @@ private:
     void toggleMidiInput();
     void setMidiUseWrittenPitch(bool useWrittenPitch);
     void toggleLoopPlayback();
+    void loopSelection();
+    void setInstrumentMix(const muse::actions::ActionData& args);
     void toggleHearPlaybackWhenEditing();
 
     void reloadPlaybackCache();

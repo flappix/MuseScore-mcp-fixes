@@ -22,6 +22,11 @@
 
 #include "elements.h"
 
+#include "engraving/dom/harmony.h"
+#include "engraving/editing/editdata.h"
+#include "engraving/dom/factory.h"
+#include "engraving/dom/glissando.h"
+
 #include "engraving/dom/chord.h"
 #include "engraving/dom/guitarbend.h"
 #include "engraving/dom/measure.h"
@@ -228,6 +233,45 @@ void Note::add(apiv1::EngravingItem* wrapped)
 
         addInternal(note(), s);
     }
+}
+
+QString EngravingItem::harmonyName() const
+{
+    return element()->isHarmony() ? toHarmony(element())->harmonyName().toQString() : QString();
+}
+
+//---------------------------------------------------------
+//   Note::addGlissando
+//---------------------------------------------------------
+
+bool Note::addGlissando(apiv1::Note* endNote, bool straight)
+{
+    mu::engraving::Note* start = note();
+    mu::engraving::Note* end = endNote ? endNote->note() : nullptr;
+    if (!end || end->chord()->tick() <= start->chord()->tick() || end->staffIdx() != start->staffIdx()) {
+        LOGW("Note::addGlissando: the end note must be a later note of the same staff");
+        return false;
+    }
+
+    auto glissandos = [start]() {
+        return std::count_if(start->spannerFor().begin(), start->spannerFor().end(),
+                             [](const mu::engraving::Spanner* s) { return s->isGlissando(); });
+    };
+    const auto before = glissandos();
+
+    mu::engraving::Glissando* gliss = mu::engraving::Factory::createGlissando(start->score()->dummy());
+    gliss->setEndElement(end);
+    if (straight) {
+        gliss->setGlissandoType(mu::engraving::GlissandoType::STRAIGHT);
+        gliss->setShowText(false);
+    }
+
+    //! NOTE The palette's way: the note sets the glissando up, adds it, or deletes it when it cannot
+    mu::engraving::EditData ed;
+    ed.dropElement = gliss;
+    start->drop(ed);
+
+    return glissandos() > before;
 }
 
 //---------------------------------------------------------

@@ -87,7 +87,7 @@ class ScoreElement : public QObject
 
 public:
     ScoreElement(mu::engraving::EngravingObject* m_e = nullptr, Ownership own = Ownership::PLUGIN)
-        : QObject(), e(m_e), m_ownership(own) {}
+        : QObject(), e(m_e), m_ownership(own), m_elementScore(m_e ? m_e->score() : nullptr) {}
     ScoreElement(const ScoreElement&) = delete;
     ScoreElement& operator=(const ScoreElement&) = delete;
     virtual ~ScoreElement();
@@ -129,6 +129,9 @@ protected:
 
 private:
     Ownership m_ownership;
+    // The score the element belongs to: an element the plugin owns is still deleted by its score, when the
+    // score is closed (it is a child of the score's dummy element)
+    mu::engraving::Score* m_elementScore = nullptr;
     mutable int m_apiversion = -1;
 };
 

@@ -38,6 +38,7 @@
 #include "update/iappupdatescenario.h"
 #include "musesounds/imusesoundscheckupdatescenario.h"
 #include "musesounds/imusesamplercheckstatusscenario.h"
+#include "extensions/iextensionsprovider.h"
 
 namespace mu::appshell {
 class StartupScenario : public IStartupScenario, public muse::Contextable, public muse::async::Asyncable
@@ -52,6 +53,7 @@ class StartupScenario : public IStartupScenario, public muse::Contextable, publi
     muse::ContextInject<muse::update::IAppUpdateScenario> appUpdateScenario = { this };
     muse::ContextInject<mu::musesounds::IMuseSoundsCheckUpdateScenario> museSoundsUpdateScenario = { this };
     muse::ContextInject<musesounds::IMuseSamplerCheckStatusScenario> museSamplerCheckStatusScenario = { this };
+    muse::ContextInject<muse::extensions::IExtensionsProvider> extensionsProvider = { this };
 
 public:
     StartupScenario(const muse::modularity::ContextPtr& iocCtx)

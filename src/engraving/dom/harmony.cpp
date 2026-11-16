@@ -1555,7 +1555,9 @@ bool Harmony::setProperty(Pid pid, const PropertyValue& v)
         setHarmony(v.value<String>());
         String newText = xmlText();
         if (newText != curText) {
-            FretDiagram* fretDiagram = explicitParent()->isFretDiagram() ? toFretDiagram(explicitParent()) : nullptr;
+            // A chord symbol not added to the score yet (e.g. made by a plugin) has no parent
+            EngravingObject* parent = explicitParent();
+            FretDiagram* fretDiagram = parent && parent->isFretDiagram() ? toFretDiagram(parent) : nullptr;
             if (fretDiagram && !fretDiagram->isCustom(curText) && configuration()->autoUpdateFretboardDiagrams()) {
                 fretDiagram->updateDiagram(plainText());
             }

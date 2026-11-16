@@ -21,10 +21,14 @@
  */
 #include "extpluginrunner.h"
 
+#include <QPointer>
 #include <QQmlComponent>
+#include <QQmlEngine>
 
 #include "../../api/v1/ipluginapiv1.h"
 #include "../../extensionserrors.h"
+
+#include "containers.h"
 
 #include "log.h"
 
@@ -33,13 +37,25 @@ using namespace muse::extensions;
 using namespace muse::extensions::legacy;
 using namespace muse::extensions::apiv1;
 
-Ret ExtPluginRunner::run(const Action& action)
+//! NOTE Plugins without UI stay alive after running (e.g. to serve a WebSocket).
+//! They are remembered, so that running one again replaces it, with its QML file read anew.
+static std::map<io::path_t, QPointer<QObject> > s_runningPlugins;
+
+static Ret createPlugin(QQmlEngine* qmlEngine, const Action& action, int restart = 0)
 {
     io::path_t qmlPath = action.path;
 
+    //! NOTE The engine caches each file's component by URL, and keeps it while anything of the previous
+    //! instance is still referenced (e.g. its callbacks in an API object). A restarted plugin is loaded
+    //! under its own URL, so that it is read anew from the file.
+    QUrl url = QUrl::fromLocalFile(qmlPath.toQString());
+    if (restart > 0) {
+        url.setQuery(QString("restart=%1").arg(restart));
+    }
+
     //! NOTE We create extension UI using a separate engine to control what we provide,
     //! making it easier to maintain backward compatibility and stability.
-    QQmlComponent component = QQmlComponent(engine()->qmlEngineApiV1(), qmlPath.toQString());
+    QQmlComponent component = QQmlComponent(qmlEngine, url);
     if (!component.isReady()) {
         LOGE() << "Failed to load QML file: " << qmlPath;
         LOGE() << component.errorString();
@@ -55,10 +71,35 @@ Ret ExtPluginRunner::run(const Action& action)
     IPluginApiV1* plugin = dynamic_cast<IPluginApiV1*>(obj);
     if (!plugin) {
         LOGE() << "Qml Object not MuseScore plugin: " << qmlPath;
+        delete obj;
         return make_ret(Err::ExtBadFormat);
     }
 
+    s_runningPlugins[qmlPath] = obj;
+
     plugin->runPlugin();
+
+    return muse::make_ok();
+}
+
+Ret ExtPluginRunner::run(const Action& action)
+{
+    QQmlEngine* qmlEngine = engine()->qmlEngineApiV1();
+    QPointer<QObject> previous = muse::value(s_runningPlugins, action.path);
+    if (!previous) {
+        return createPlugin(qmlEngine, action);
+    }
+
+    //! NOTE The previous instance may be the caller (a plugin restarting itself), so it is deleted
+    //! only after the current event, and the new instance is created once it is gone.
+    static int restarts = 0;
+    int restart = ++restarts;
+    LOGI() << "Restarting plugin: " << action.path;
+    QObject::connect(previous, &QObject::destroyed, qmlEngine, [qmlEngine, action, restart]() {
+        qmlEngine->trimComponentCache();
+        createPlugin(qmlEngine, action, restart);
+    }, Qt::QueuedConnection);
+    previous->deleteLater();
 
     return muse::make_ok();
 }

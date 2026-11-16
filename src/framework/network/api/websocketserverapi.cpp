@@ -56,8 +56,29 @@ void WebSocketServerApi::listen(int port, QJSValue onNewConnected)
 
     m_onNewConnected = onNewConnected;
 
+    if (m_server->isListening()) {
+        //! NOTE Listening again (e.g. a plugin was restarted) hands the server to the new caller.
+        //! The connections made so far would still deliver their messages to the previous caller,
+        //! so they are closed; their clients reconnect.
+        std::vector<QWebSocket*> sockets;
+        for (const auto& client : m_clients) {
+            sockets.push_back(client.second.socket);
+        }
+        for (QWebSocket* socket : sockets) {
+            socket->close(QWebSocketProtocol::CloseCodeGoingAway);
+        }
+
+        if (m_server->serverPort() == port) {
+            return;
+        }
+        m_server->close();
+    }
+
+    //! NOTE Only this computer may connect: a client can change the open score
     LOGD() << "server listen port: " << port;
-    m_server->listen(QHostAddress::Any, port);
+    if (!m_server->listen(QHostAddress::LocalHost, port)) {
+        LOGE() << "failed to listen on port " << port << ": " << m_server->errorString();
+    }
 }
 
 void WebSocketServerApi::onNewConnection()

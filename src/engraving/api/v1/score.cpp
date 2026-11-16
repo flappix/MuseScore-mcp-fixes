@@ -36,6 +36,7 @@
 #include "dom/text.h"
 #include "editing/editpart.h"
 #include "editing/editsystemlocks.h"
+#include "editing/transpose.h"
 #include "types/typesconv.h"
 
 // api
@@ -619,6 +620,37 @@ void Score::endCmd(bool rollback)
     }
 
     notation()->notationChanged().notify();
+}
+
+QString Score::checkConsistency()
+{
+    muse::Ret ret = score()->masterScore()->sanityCheck();
+    return ret ? QString() : QString::fromStdString(ret.text());
+}
+
+bool Score::transposeToKey(int keyFifths, int direction, bool transposeKeySignatures, bool transposeChordSymbols)
+{
+    if (keyFifths < -7 || keyFifths > 7 || direction < 0 || direction > 2) {
+        LOGW("Score::transposeToKey: invalid key %d or direction %d", keyFifths, direction);
+        return false;
+    }
+
+    //! NOTE Like the Transpose dialog: with no range selected, the whole score
+    const bool selectAll = !score()->selection().isRange();
+    if (selectAll) {
+        score()->cmdSelectAll();
+    }
+
+    static const mu::engraving::TransposeDirection directions[] = {
+        mu::engraving::TransposeDirection::UP, mu::engraving::TransposeDirection::DOWN, mu::engraving::TransposeDirection::CLOSEST
+    };
+    bool ok = mu::engraving::Transpose::transpose(score(), mu::engraving::TransposeMode::TO_KEY, directions[direction],
+                                                  mu::engraving::Key(keyFifths), 0, transposeKeySignatures, transposeChordSymbols, true);
+
+    if (selectAll) {
+        score()->deselectAll();
+    }
+    return ok;
 }
 
 void Score::doLayout(Fraction* startTick, Fraction* endTick)

@@ -22,6 +22,8 @@
 
 #include "scoreelement.h"
 
+#include <QCoreApplication>
+
 #include "engraving/dom/measure.h"
 #include "engraving/dom/range.h"
 #include "engraving/dom/engravingobject.h"
@@ -40,7 +42,12 @@ using namespace mu::engraving::apiv1;
 
 ScoreElement::~ScoreElement()
 {
-    if (m_ownership == Ownership::PLUGIN) {
+    //! NOTE An element a plugin created but did not add to a score is deleted with its wrapper, unless:
+    //! - its score was closed: the score deleted it already (as a child of its dummy element);
+    //! - the plugins' engine is destroyed at exit, after the application: the element could no longer
+    //!   notify its score (which aborts on a destroyed mutex), and the process is ending anyway.
+    if (m_ownership == Ownership::PLUGIN && QCoreApplication::instance() && !QCoreApplication::closingDown()
+        && (!m_elementScore || mu::engraving::Score::isValid(m_elementScore))) {
         delete e;
     }
 }

@@ -37,6 +37,10 @@
 #include "engraving/dom/score.h"
 #include "engraving/dom/system.h"
 #include "engraving/dom/segment.h"
+#include "engraving/dom/dynamic.h"
+#include "engraving/dom/harmony.h"
+#include "engraving/dom/keysig.h"
+#include "engraving/dom/staff.h"
 #include "engraving/dom/timesig.h"
 #include "engraving/dom/tuplet.h"
 
@@ -162,13 +166,26 @@ void Cursor::rewind(RewindMode mode)
 ///   \since MuseScore 3.5
 //---------------------------------------------------------
 
+bool Cursor::moveToTick(int tick)
+{
+    mu::engraving::Segment* seg = m_score->tick2segment(mu::engraving::Fraction::fromTicks(tick), /* first */ true,
+                                                        mu::engraving::SegmentType::ChordRest);
+    if (!seg) {
+        return false;
+    }
+    setSegment(seg);
+    return true;
+}
+
 void Cursor::rewindToTick(int tick)
 {
     // integer ticks may contain numeric errors so it is
     // better to search not precisely if possible
     mu::engraving::Fraction fTick = mu::engraving::Fraction::fromTicks(tick + 1);
     mu::engraving::Segment* seg = m_score->tick2leftSegment(fTick);
-    if (!(seg->segmentType() & m_filter)) {
+    // No segment at the end of the score (or past it): the cursor then has no position, like after rewinding
+    // past the last element
+    if (seg && !(seg->segmentType() & m_filter)) {
         // we need another segment type, search by known tick
         seg = m_score->tick2segment(seg->tick(), /* first */ true, m_filter);
     }
@@ -282,6 +299,18 @@ void Cursor::add(EngravingItem* wrapped)
         return;            // Don't allow operation.
     }
 
+    if (s->isKeySig()) {
+        //! NOTE Like a key signature dropped on a measure: at the start of the measure, on all staves,
+        //! each in its own transposition, so that the staves' keys (and accidentals) are updated too.
+        //! The score gets key signatures of its own: the given one stays with the plugin, unchanged.
+        mu::engraving::KeySigEvent key = toKeySig(s)->keySigEvent();
+        mu::engraving::Fraction tick = segment()->measure()->tick();
+        for (mu::engraving::Staff* staff : m_score->staves()) {
+            m_score->undoChangeKeySig(staff, tick, key);
+        }
+        return;
+    }
+
     const int m_track = track();
     mu::engraving::Segment* _segment = segment();
 
@@ -295,12 +324,6 @@ void Cursor::add(EngravingItem* wrapped)
         return;
     }
     switch (s->type()) {
-    case ElementType::KEYSIG: {
-        mu::engraving::Segment* ns = _segment->measure()->undoGetSegment(SegmentType::KeySig, _segment->tick());
-        s->setParent(ns);
-        m_score->undoAddElement(s);
-        break;
-    }
     case ElementType::TIMESIG: {
         mu::engraving::Measure* m = _segment->measure();
         mu::engraving::Fraction tick = m->tick();
@@ -422,6 +445,27 @@ void Cursor::add(EngravingItem* wrapped)
             m_score->undoAddElement(s);
             break;
         }
+        break;
+    }
+
+    // To be added to the current segment, with the symbols of its type when the plugin set only that
+    // (setting dynamicType alone left an empty, invisible dynamic)
+    case ElementType::DYNAMIC: {
+        mu::engraving::Dynamic* dynamic = toDynamic(s);
+        if (dynamic->xmlText().isEmpty()) {
+            dynamic->setXmlText(mu::engraving::Dynamic::dynamicText(dynamic->dynamicType()));
+        }
+        m_score->undoAddElement(s);
+        break;
+    }
+
+    // To be added to the current segment, like a chord symbol typed in: its text is parsed into a chord
+    // (root, quality, bass), which layout, playback and transposition need
+    case ElementType::HARMONY: {
+        mu::engraving::Harmony* harmony = toHarmony(s);
+        harmony->setHarmony(harmony->plainText());
+        harmony->setPlainText(harmony->harmonyName());
+        m_score->undoAddElement(s);
         break;
     }
 

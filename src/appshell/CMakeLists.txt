@@ -23,6 +23,7 @@ muse_create_module(appshell)
 target_sources(appshell PRIVATE
     appshellmodule.cpp
     appshellmodule.h
+    appshellextensionpoints.h
     iappshellconfiguration.h
     appshelltypes.h
     internal/applicationactioncontroller.cpp

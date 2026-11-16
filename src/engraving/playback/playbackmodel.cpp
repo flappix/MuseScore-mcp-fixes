@@ -562,6 +562,14 @@ void PlaybackModel::processSegment(const int tickPositionOffset, const Segment* 
             continue;
         }
 
+        // A voice whose playback is switched off in the staff's properties is silent (the track still counts
+        // as changed, so that switching it on again renders it)
+        const Staff* staff = item->staff();
+        if (staff && !staff->playbackVoice(static_cast<int>(item->voice()))) {
+            collectChangesTracks(trackId, trackChanges);
+            continue;
+        }
+
         ArticulationsProfilePtr profile = defaultActiculationProfile(trackId);
         if (!profile) {
             LOGE() << "unsupported instrument family: " << item->part()->id();

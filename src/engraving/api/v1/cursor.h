@@ -202,6 +202,12 @@ public:
 
     Q_INVOKABLE void rewind(RewindMode mode);
     Q_INVOKABLE void rewindToTick(int tick);
+    /// Moves the cursor to \p tick in its staff and voice, also when that voice has nothing there yet (to write
+    /// a second voice, like starting voice 2 in note input): a note or rest of any voice must start at \p tick.
+    /// Unlike rewindToTick(), it does not move on to the next element of the cursor's voice.
+    /// \returns whether the cursor is at \p tick
+    /// \since MuseScore 4.7
+    Q_INVOKABLE bool moveToTick(int tick);
     Q_INVOKABLE void rewindToFraction(apiv1::Fraction* f);
     Q_INVOKABLE double time(bool includeRepeats = false);
 

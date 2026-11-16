@@ -1340,6 +1340,10 @@ public:
     Q_INVOKABLE apiv1::EngravingItem* clone() const { return wrap(element()->clone(), Ownership::PLUGIN); }
 
     Q_INVOKABLE QString subtypeName() const { return element()->translatedSubtypeUserName().toQString(); }
+    /// For chord symbols: the chord's name as it is written, e.g. "F#dim", also for one that was not typed
+    /// in (e.g. imported from MusicXML), whose text is empty until it is drawn. Empty for other elements.
+    /// \since MuseScore 4.7
+    Q_INVOKABLE QString harmonyName() const;
     /// Deprecated: same as ScoreElement::name. Left for compatibility purposes.
     Q_INVOKABLE QString _name() const { return name(); }
 
@@ -1496,6 +1500,11 @@ public:
     /// Remove a note's element.
     /// \since MuseScore 3.3.3
     Q_INVOKABLE void remove(apiv1::EngravingItem* wrapped);
+    /// Adds a glissando from this note to \p endNote, a later note of the same staff, like a glissando
+    /// dropped on the note from the palette. With \p straight, a straight line without text: a slide on
+    /// guitar. Returns whether it was added (not when the note already starts one).
+    /// \since MuseScore 4.7
+    Q_INVOKABLE bool addGlissando(apiv1::Note* endNote, bool straight = true);
 };
 
 //---------------------------------------------------------

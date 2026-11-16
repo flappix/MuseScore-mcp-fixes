@@ -65,6 +65,7 @@ static constexpr int SAVE_AS_BTN_ID    = RETRY_SAVE_BTN_ID + 1;
 void ProjectActionsController::init()
 {
     dispatcher()->reg(this, "file-new", this, &ProjectActionsController::newProject);
+    dispatcher()->reg(this, "file-new-with-options", this, &ProjectActionsController::newProjectWithOptions);
     dispatcher()->reg(this, "file-open", this, &ProjectActionsController::openProject);
 
     dispatcher()->reg(this, "file-close", [this]() {
@@ -131,6 +132,7 @@ bool ProjectActionsController::canReceiveAction(const ActionCode& code) const
     if (!currentNotationProject()) {
         static const std::unordered_set<ActionCode> DONT_REQUIRE_OPEN_PROJECT {
             "file-new",
+            "file-new-with-options",
             "file-open",
             "file-convert-to-score",
             "continue-last-session",
@@ -713,6 +715,77 @@ void ProjectActionsController::newProject()
             LOGE() << ret.toString();
         }
     });
+}
+
+//! NOTE Creates a score without the New Score dialog, e.g. for a plugin. A score that is open is closed
+//! first (asking to save it), so that the new one opens in this window. The argument is a QVariantMap:
+//! title, subtitle, composer (strings); instruments (list of instrument ids, in score order);
+//! keyFifths (concert key: sharps > 0, flats < 0); timesigNumerator, timesigDenominator;
+//! tempoBpm (quarter notes per minute, optional); measures; pickupNumerator, pickupDenominator (optional)
+void ProjectActionsController::newProjectWithOptions(const ActionData& args)
+{
+    if (m_isProjectProcessing || m_isProjectDownloading) {
+        return;
+    }
+
+    const QVariantMap info = args.count() > 0 ? args.arg<QVariantMap>(0) : QVariantMap();
+
+    ProjectCreateOptions options;
+    options.title = info.value("title").toString();
+    options.subtitle = info.value("subtitle").toString();
+    options.composer = info.value("composer").toString();
+
+    ScoreCreateOptions& scoreOptions = options.scoreOptions;
+    for (const QVariant& id : info.value("instruments").toList()) {
+        PartInstrument pi;
+        pi.instrumentTemplate = instrumentsRepository()->instrumentTemplate(muse::String::fromQString(id.toString()));
+        if (pi.instrumentTemplate.id.isEmpty()) {
+            LOGE() << "unknown instrument: " << id.toString();
+            return;
+        }
+        scoreOptions.parts << pi;
+    }
+    scoreOptions.order = customOrder();
+
+    scoreOptions.key = static_cast<Key>(std::clamp(info.value("keyFifths", 0).toInt(), -7, 7));
+    scoreOptions.globalTimesig = Fraction(info.value("timesigNumerator", 4).toInt(), info.value("timesigDenominator", 4).toInt());
+    scoreOptions.totalMeasures = std::max(1, info.value("measures", 32).toInt());
+
+    const int bpm = info.value("tempoBpm", 0).toInt();
+    scoreOptions.withTempo = bpm > 0;
+    scoreOptions.tempo.valueBpm = bpm;
+    scoreOptions.tempo.duration = DurationType::V_QUARTER;
+
+    const int pickupNumerator = info.value("pickupNumerator", 0).toInt();
+    scoreOptions.withPickupMeasure = pickupNumerator > 0;
+    if (scoreOptions.withPickupMeasure) {
+        scoreOptions.pickupTimesig = Fraction(pickupNumerator, info.value("pickupDenominator", 4).toInt());
+    }
+
+    if (currentNotationProject() && !closeOpenedProject(false)) {
+        return;
+    }
+
+    m_isProjectProcessing = true;
+    DEFER {
+        m_isProjectProcessing = false;
+    };
+
+    INotationProjectPtr project = projectCreator()->newProject(iocContext());
+    Ret ret = project->createNew(options);
+    if (!ret) {
+        LOGE() << ret.toString();
+        return;
+    }
+
+    globalContext()->setCurrentProject(project);
+
+    extensionsProvider()->performPointAsync(EXEC_ONPOST_PROJECT_CREATED);
+
+    ret = doFinishOpenProject();
+    if (!ret) {
+        LOGE() << ret.toString();
+    }
 }
 
 bool ProjectActionsController::closeOpenedProject(bool goToHome)

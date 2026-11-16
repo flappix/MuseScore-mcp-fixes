@@ -29,11 +29,13 @@
 
 #include "ui/iuiactionsregister.h"
 #include "ui/iinteractiveuriregister.h"
+#include "extensions/iextensionsexecpointsregister.h"
 
 #include "internal/applicationuiactions.h"
 #include "internal/applicationactioncontroller.h"
 #include "internal/appshellconfiguration.h"
 #include "internal/startupscenario.h"
+#include "appshellextensionpoints.h"
 #include "internal/applicationactioncontroller.h"
 #include "internal/sessionsmanager.h"
 
@@ -87,6 +89,12 @@ void AppShellModule::resolveImports()
         ir->registerQmlUri(Uri("musescore://about/musicxml"), "MuseScore.AppShell", "AboutMusicXMLDialog");
         ir->registerQmlUri(Uri("musescore://welcomedialog"), "MuseScore.AppShell", "WelcomeDialog");
         ir->registerQmlUri(Uri("musescore://firstLaunchSetup"), "MuseScore.AppShell", "FirstLaunchSetupDialog");
+    }
+
+    auto er = ioc()->resolve<muse::extensions::IExtensionsExecPointsRegister>(moduleName());
+    if (er) {
+        er->reg(moduleName(), { EXEC_ONPOST_APP_STARTED,
+                                TranslatableString::untranslatable("On post app started") });
     }
 }
 

@@ -349,6 +349,8 @@ public:
     virtual bool readOnly() const;
 
     static void onElementDestruction(EngravingItem* se);
+    // Whether the score still exists (it is in validScores from its construction to its destruction)
+    static bool isValid(const Score* score) { return validScores.find(const_cast<Score*>(score)) != validScores.end(); }
 
     void scanElements(std::function<void(EngravingItem*)> func) override;
 

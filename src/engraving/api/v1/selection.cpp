@@ -129,17 +129,24 @@ bool Selection::selectRange(int startTick, int endTick, int startStaff, int endS
         return false;
     }
 
-    mu::engraving::Segment* segStart = m_selection->score()->tick2leftSegmentMM(mu::engraving::Fraction::fromTicks(startTick));
-    mu::engraving::Segment* segEnd = m_selection->score()->tick2leftSegmentMM(mu::engraving::Fraction::fromTicks(endTick));
+    mu::engraving::Score* score = m_selection->score();
+    mu::engraving::Segment* segStart = score->tick2leftSegmentMM(mu::engraving::Fraction::fromTicks(startTick));
+    //! NOTE A range up to the end of the score has no end segment (the segment left of the end tick would be
+    //! the last one in the range, so the range was refused): no end segment means up to the end of the score
+    const mu::engraving::Fraction end = mu::engraving::Fraction::fromTicks(endTick);
+    mu::engraving::Segment* segEnd = end >= score->endTick() ? nullptr : score->tick2leftSegmentMM(end);
 
     if (!segStart || (segEnd && !((*segEnd) > (*segStart)))) {
         return false;
     }
 
-    if (segEnd && m_selection->score()->undoStack()->hasActiveCommand()) {
+    if (segEnd && score->undoStack()->hasActiveCommand()) {
         m_selection->setRangeTicks(segStart->tick(), segEnd->tick(), startStaff, endStaff);
     } else {
         m_selection->setRange(segStart, segEnd, startStaff, endStaff);
+        //! NOTE The selected elements are otherwise listed only on the next update: until then, actions that
+        //! need selected notes (e.g. cmd("add-hairpin")) saw none and were refused
+        m_selection->updateSelectedElements();
     }
 
     return true;

@@ -27,6 +27,7 @@
 
 #include "engraving/compat/scoreaccess.h"
 #include "engraving/dom/factory.h"
+#include "engraving/dom/instrtemplate.h"
 #include "engraving/dom/interval.h"
 #include "engraving/dom/masterscore.h"
 #include "engraving/types/types.h"
@@ -381,27 +382,35 @@ void PluginAPI::removeElement(apiv1::EngravingItem* wrapped)
 //   newScore
 //---------------------------------------------------------
 
-apiv1::Score* PluginAPI::newScore(const QString& /*name*/, const QString& part, int measures)
+apiv1::Score* PluginAPI::newScore(const QString& name, const QString& part, int measures)
 {
-    if (currentScore()) {
-        currentScore()->endCmd();
+    QVariantMap options;
+    options["title"] = name;
+    options["instruments"] = QVariantList { part };
+    options["measures"] = measures;
+    return createScore(options);
+}
+
+//---------------------------------------------------------
+//   createScore
+//---------------------------------------------------------
+
+apiv1::Score* PluginAPI::createScore(const QVariantMap& options)
+{
+    for (const QVariant& id : options.value("instruments").toList()) {
+        if (!mu::engraving::searchTemplate(muse::String::fromQString(id.toString()))) {
+            LOGW() << "PluginAPI::createScore: unknown instrument id: " << id.toString();
+            return nullptr;
+        }
     }
 
-    MasterScore* score = mu::engraving::compat::ScoreAccess::createMasterScoreWithDefaultStyle(iocContext());
+    const mu::engraving::Score* previous = currentScore();
+    actionsDispatcher()->dispatch("file-new-with-options", muse::actions::ActionData::make_arg1<QVariantMap>(options));
 
-    // TODO: Set path/filename
-    NOT_IMPLEMENTED << "setting path/filename";
-
-    score->appendPart(Score::instrTemplateFromName(part));
-    score->appendMeasures(measures);
-    score->doLayout();
-
-    // TODO: Open score
-    NOT_IMPLEMENTED << "opening the newly created score";
-
-    qApp->processEvents();
-    Q_ASSERT(currentScore() == score);
-    score->startCmd(TranslatableString("undoableAction", "New score"));
+    mu::engraving::Score* score = currentScore();
+    if (!score || score == previous) {
+        return nullptr;
+    }
     return wrap<Score>(score, Ownership::SCORE);
 }
 
@@ -422,6 +431,16 @@ void PluginAPI::cmd(const QString& s)
     };
 
     actionsDispatcher()->dispatch(COMPAT_CMD_MAP.value(s, s).toStdString());
+}
+
+void PluginAPI::cmdWithArg(const QString& code, const QVariant& arg)
+{
+    // A JS object arrives as a QVariantMap (or a QJSValue): actions read maps, and numbers as double
+    const QVariant value = arg.canConvert<QJSValue>() ? arg.value<QJSValue>().toVariant() : arg;
+    const muse::actions::ActionData data = value.typeId() == QMetaType::QVariantMap
+                                           ? muse::actions::ActionData::make_arg1<QVariantMap>(value.toMap())
+                                           : muse::actions::ActionData::make_arg1<double>(value.toDouble());
+    actionsDispatcher()->dispatch(code.toStdString(), data);
 }
 
 void PluginAPI::openLog(const QString&)

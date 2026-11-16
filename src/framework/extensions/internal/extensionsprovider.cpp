@@ -232,7 +232,8 @@ muse::Ret ExtensionsProvider::performPoint(const ExecPointName& name)
                 continue;
             }
 
-            Ret r = perform(makeActionQuery(m.uri, a.code));
+            //! NOTE perform() looks the extension up by its URI, not by its action query
+            Ret r = perform(uriQueryFromActionQuery(makeActionQuery(m.uri, a.code)));
             if (ret) {
                 ret = r;
             }

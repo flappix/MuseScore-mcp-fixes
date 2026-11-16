@@ -27,6 +27,8 @@
 #include "async/async.h"
 #include "translation.h"
 
+#include "../appshellextensionpoints.h"
+
 #include "muse_framework_config.h"
 
 #include "log.h"
@@ -169,6 +171,10 @@ void StartupScenario::runAfterSplashScreen()
             muse::async::Channel<Uri> mut = opened;
             mut.disconnect(this);
             m_startupCompleted = true;
+
+            if (extensionsProvider()) {
+                extensionsProvider()->performPointAsync(EXEC_ONPOST_APP_STARTED);
+            }
         });
     });
 

@@ -60,6 +60,11 @@ static const ActionCode REWIND_CODE("rewind");
 static const ActionCode LOOP_CODE("loop");
 static const ActionCode LOOP_IN_CODE("loop-in");
 static const ActionCode LOOP_OUT_CODE("loop-out");
+static const ActionCode LOOP_SELECTION_CODE("loop-selection");
+static const ActionCode LOOP_OFF_CODE("loop-off");
+static const ActionCode PLAY_START_CODE("play-start");
+static const ActionCode SET_TEMPO_MULTIPLIER_CODE("playback-set-tempo-multiplier");
+static const ActionCode SET_INSTRUMENT_MIX_CODE("playback-set-instrument-mix");
 static const ActionCode METRONOME_CODE("metronome");
 static const ActionCode MIDI_ON_CODE("midi-on");
 static const ActionCode INPUT_WRITTEN_PITCH("midi-input-written-pitch");
@@ -117,6 +122,21 @@ void PlaybackController::init()
     dispatcher()->reg(this, LOOP_CODE, this, &PlaybackController::toggleLoopPlayback);
     dispatcher()->reg(this, LOOP_IN_CODE, [this]() { addLoopBoundary(LoopBoundaryType::LoopIn); });
     dispatcher()->reg(this, LOOP_OUT_CODE, [this]() { addLoopBoundary(LoopBoundaryType::LoopOut); });
+    //! NOTE Unlike "loop" and "play", these do not toggle: for plugins, which cannot see the current state
+    dispatcher()->reg(this, LOOP_SELECTION_CODE, this, &PlaybackController::loopSelection);
+    dispatcher()->reg(this, LOOP_OFF_CODE, this, &PlaybackController::disableLoop);
+    dispatcher()->reg(this, PLAY_START_CODE, [this]() {
+        if (!isPlaying()) {
+            play();
+        }
+    });
+    //! NOTE With arguments, for plugins: a tempo factor (e.g. 0.75), and a staff's instrument in the mixer
+    dispatcher()->reg(this, SET_TEMPO_MULTIPLIER_CODE, [this](const ActionData& args) {
+        if (args.count() > 0) {
+            setTempoMultiplier(std::clamp(args.arg<double>(0), 0.1, 3.0));
+        }
+    });
+    dispatcher()->reg(this, SET_INSTRUMENT_MIX_CODE, this, &PlaybackController::setInstrumentMix);
     dispatcher()->reg(this, REPEAT_CODE, this, &PlaybackController::togglePlayRepeats);
     dispatcher()->reg(this, PLAY_CHORD_SYMBOLS_CODE, this, &PlaybackController::togglePlayChordSymbols);
     dispatcher()->reg(this, PAN_CODE, this, &PlaybackController::toggleAutomaticallyPan);
@@ -953,6 +973,73 @@ void PlaybackController::reloadPlaybackCache()
 void PlaybackController::openPlaybackSetupDialog()
 {
     interactive()->open("musescore://playback/soundprofilesdialog");
+}
+
+//! NOTE The argument is a QVariantMap: staff (index) or metronome (true), and any of mute, solo (bool) and
+//! volumeDb (number), for the instrument of that staff (the mixer has a channel per instrument, not per staff)
+//! or the metronome (whose mute switches it off, like the metronome button)
+void PlaybackController::setInstrumentMix(const ActionData& args)
+{
+    const QVariantMap mix = args.count() > 0 ? args.arg<QVariantMap>(0) : QVariantMap();
+    InstrumentTrackId trackId;
+    if (mix.value("metronome").toBool()) {
+        if (!notationPlayback()) {
+            return;
+        }
+        trackId = notationPlayback()->metronomeTrackId();
+    } else {
+        const MasterScore* score = m_masterNotation ? m_masterNotation->masterScore() : nullptr;
+        const int staffIdx = mix.value("staff", -1).toInt();
+        if (!score || staffIdx < 0 || staffIdx >= static_cast<int>(score->nstaves())) {
+            LOGW() << "playback-set-instrument-mix: invalid staff " << staffIdx;
+            return;
+        }
+
+        const Part* part = score->staff(static_cast<staff_idx_t>(staffIdx))->part();
+        trackId = { part->id(), part->instrument(Fraction(0, 1))->id() };
+    }
+
+    if (mix.contains("mute") || mix.contains("solo")) {
+        SoloMuteState state = trackSoloMuteState(trackId);
+        if (mix.contains("mute")) {
+            state.mute = mix.value("mute").toBool();
+        }
+        if (mix.contains("solo")) {
+            state.solo = mix.value("solo").toBool();
+        }
+        setTrackSoloMuteState(trackId, state);
+    }
+
+    if (mix.contains("volumeDb") && muse::contains(m_instrumentTrackIdMap, trackId)) {
+        const volume_db_t volume = static_cast<volume_db_t>(std::clamp(mix.value("volumeDb").toDouble(), -60.0, 12.0));
+
+        AudioOutputParams stored = audioSettings()->trackOutputParams(trackId);
+        stored.volume = volume;
+        audioSettings()->setTrackOutputParams(trackId, stored);
+
+        //! NOTE The stored mute state can be stale (e.g. the metronome's, whose button only changes the playback's),
+        //! so the playback gets the current one, with the new volume: re-applying the stored state muted a
+        //! metronome that had just been switched on
+        AudioOutputParams params = trackOutputParams(trackId);
+        if (trackId != notationPlayback()->metronomeTrackId()) {
+            const SoloMuteState state = trackSoloMuteState(trackId);
+            params.muted = state.mute;
+            params.solo = state.solo;
+        }
+        params.volume = volume;
+        playback()->setOutputParams(m_currentSequenceId, m_instrumentTrackIdMap.at(trackId), std::move(params));
+    }
+}
+
+void PlaybackController::loopSelection()
+{
+    if (!selection() || !selection()->isRange()) {
+        LOGW() << "loop-selection needs a range selection";
+        return;
+    }
+
+    addLoopBoundaryToTick(LoopBoundaryType::LoopIn, selectionRange()->startTick().ticks());
+    addLoopBoundaryToTick(LoopBoundaryType::LoopOut, selectionRange()->endTick().ticks());
 }
 
 void PlaybackController::addLoopBoundary(LoopBoundaryType type)
@@ -1813,6 +1900,10 @@ bool PlaybackController::canReceiveAction(const ActionCode& code) const
         LOOP_CODE,
         LOOP_IN_CODE,
         LOOP_OUT_CODE,
+        LOOP_SELECTION_CODE,
+        LOOP_OFF_CODE,
+        PLAY_START_CODE,
+        SET_TEMPO_MULTIPLIER_CODE,
     };
 
     if (muse::contains(REQUIRES_MEASURES, code)) {

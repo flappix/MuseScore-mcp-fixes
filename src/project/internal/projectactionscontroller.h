@@ -45,6 +45,7 @@
 #include "imscmetareader.h"
 #include "io/ifilesystem.h"
 #include "notation/inotationconfiguration.h"
+#include "notation/iinstrumentsrepository.h"
 #include "musesounds/imusesoundscheckupdatescenario.h"
 #include "musesounds/imusesamplercheckstatusscenario.h"
 #include "extensions/iextensionsprovider.h"
@@ -82,6 +83,7 @@ class ProjectActionsController : public IProjectFilesController, public muse::mi
     muse::ContextInject<musesounds::IMuseSoundsCheckUpdateScenario> museSoundsCheckUpdateScenario = { this };
     muse::ContextInject<musesounds::IMuseSamplerCheckStatusScenario> museSamplerCheckStatusScenario = { this };
     muse::ContextInject<muse::extensions::IExtensionsProvider> extensionsProvider = { this };
+    muse::ContextInject<notation::IInstrumentsRepository> instrumentsRepository = { this };
 
 public:
 
@@ -119,6 +121,7 @@ private:
     notation::INotationSelectionPtr currentNotationSelection() const;
 
     void newProject();
+    void newProjectWithOptions(const muse::actions::ActionData& args);
 
     void openProject(const muse::actions::ActionData& args);
     muse::Ret openProject(const muse::io::path_t& path, const QString& displayNameOverride = QString());

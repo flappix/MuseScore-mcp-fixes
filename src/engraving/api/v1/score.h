@@ -754,6 +754,34 @@ public:
     */
     Q_INVOKABLE void endCmd(bool rollback = false);
 
+    /** APIDOC
+     * Checks the whole score (all parts) for corruption, the same check
+     * MuseScore runs before saving: e.g. measures whose notes and rests do
+     * not add up to the measure's length.
+     * Call it after `endCmd()`; to undo a corrupting edit, call it before
+     * `endCmd()` and pass `true` to `endCmd()` when it reports errors.
+     * @method
+     * @returns {String} An empty string when the score is consistent,
+     * otherwise a description of each problem, one per line.
+     * @since 4.7
+    */
+    Q_INVOKABLE QString checkConsistency();
+
+    /** APIDOC
+     * Transposes the selected range, or the whole score when no range is selected, to another key,
+     * like Tools > Transpose > To key. Call it between `startCmd()` and `endCmd()`.
+     * @method
+     * @param {Number} keyFifths The new concert key: sharps > 0, flats < 0 (a minor key: the signature of
+     * its relative major, e.g. -3 for C minor).
+     * @param {Number} direction 0: up, 1: down, 2: closest.
+     * @param {Boolean} transposeKeySignatures Whether key signatures are changed too.
+     * @param {Boolean} transposeChordSymbols Whether chord symbols are transposed too.
+     * @returns {Boolean} Whether all notes could be transposed.
+     * @since 4.7
+    */
+    Q_INVOKABLE bool transposeToKey(int keyFifths, int direction = 2, bool transposeKeySignatures = true,
+                                    bool transposeChordSymbols = true);
+
     apiv1::Selection* selection() { return selectionWrap(&score()->selection()); }
 
     QQmlListProperty<apiv1::Excerpt> excerpts() const;

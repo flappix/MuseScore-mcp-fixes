@@ -528,9 +528,25 @@ public:
     // /// \endcond
 
     Q_INVOKABLE apiv1::Score* newScore(const QString& name, const QString& part, int measures);
+    /** APIDOC
+     * Creates a new score and opens it in place of the current one (which is closed first, asking to
+     * save it), like File > New. Call it outside startCmd()/endCmd().
+     * @method
+     * @param {Object} options title, subtitle, composer (strings); instruments (array of instrument
+     * ids, e.g. "violin", in score order); keyFifths (concert key: sharps > 0, flats < 0);
+     * timesigNumerator, timesigDenominator; tempoBpm (quarter notes per minute, optional);
+     * measures; pickupNumerator, pickupDenominator (optional)
+     * @returns {Score} The new score, or null when it was not created (an unknown instrument id,
+     * or closing the current score was cancelled)
+     * @since 4.7
+    */
+    Q_INVOKABLE apiv1::Score* createScore(const QVariantMap& options);
     Q_INVOKABLE apiv1::EngravingItem* newElement(int);
     Q_INVOKABLE void removeElement(apiv1::EngravingItem* wrapped);
     Q_INVOKABLE void cmd(const QString&);
+    /// Like cmd(), for actions that take an argument: a number, or an object (passed as a map).
+    /// \since MuseScore 4.7
+    Q_INVOKABLE void cmdWithArg(const QString& code, const QVariant& arg);
     /// \cond PLUGIN_API \private \endcond
     Q_INVOKABLE apiv1::MsProcess* newQProcess();
     Q_INVOKABLE bool writeScore(apiv1::Score*, const QString& name, const QString& ext);
